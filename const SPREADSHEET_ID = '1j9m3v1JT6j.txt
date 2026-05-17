@@ -1,0 +1,98 @@
+const SPREADSHEET_ID = '1j9m3v1JT6j8Ft8qxJYkv1CH7UBS75lNY36RLzz4XhWc'; //
+const STATUS_SHEET = 'シート1'; // 面会状況用のシート名
+const BBS_SHEET = '掲示板';     // お知らせ用のシート名
+
+function doGet() {
+  // データの取得
+  const statusData = getIcuStatus();
+  const bbsData = getBbsPosts();
+  
+  // GitHubから読み込めるようにJSON形式で返す
+  const output = JSON.stringify({
+    status: statusData,
+    bbs: bbsData
+  });
+  
+  return ContentService.createTextOutput(output).setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * ICUのステータスを取得
+ */
+function getIcuStatus() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID); //
+  const sheet = ss.getSheetByName(STATUS_SHEET); //
+  const data = sheet.getRange('A2:C2').getValues()[0]; //
+  
+  const rawStatus = data[0];
+  
+  return {
+    // 「OK」または「面会可能」であれば「面会可能」として返す
+    mainStatus: (rawStatus === "OK" || rawStatus === "面会可能") ? "面会可能" : "面会不可", //
+    detail: data[1],
+    updateTime: data[2] ? Utilities.formatDate(new Date(data[2]), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss") : "---" //
+  };
+}
+
+/**
+ * お知らせの内容を取得（最新5件を表示）
+ */
+function getBbsPosts() {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(BBS_SHEET); //
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return []; //
+
+    // A2からB列の最後までデータを取得
+    const data = sheet.getRange(2, 1, lastRow - 1, 2).getValues(); //
+
+    // 新しい順に並び替えて整形
+    return data.reverse().map(row => ({
+      time: row[0] ? Utilities.formatDate(new Date(row[0]), "Asia/Tokyo", "MM/dd HH:mm") : "",
+      content: row[1]
+    })).filter(item => item.content !== ""); //
+  } catch(e) {
+    return []; //
+  }
+}
+
+/**
+ * スプレッドシート編集時の自動日時更新
+ */
+function onEdit(e) {
+  const sheet = e.source.getActiveSheet();
+  const range = e.range;
+  const sheetName = sheet.getName();
+
+  // 面会状況（シート1）の更新
+  if (sheetName === STATUS_SHEET && range.getRow() === 2 && (range.getColumn() === 1 || range.getColumn() === 2)) {
+    sheet.getRange('C2').setValue(new Date()).setNumberFormat('yyyy/MM/dd HH:mm:ss'); //
+  }
+  
+  // 掲示板（お知らせ）の更新
+  if (sheetName === BBS_SHEET && range.getRow() >= 2 && range.getColumn() === 2) {
+    const row = range.getRow();
+    sheet.getRange(row, 1).setValue(new Date()).setNumberFormat('MM/dd HH:mm:ss'); //
+  }
+}
+
+/**
+ * ラズパイからの判定結果を受け取ってシートを更新
+ */
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents); //
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID); //
+    const sheet = ss.getSheetByName(STATUS_SHEET); //
+
+    sheet.getRange("A2").setValue(data.status); //
+    sheet.getRange("B2").setValue(data.detail); //
+    sheet.getRange("C2").setValue(new Date()).setNumberFormat('yyyy/MM/dd HH:mm:ss'); //
+    
+    SpreadsheetApp.flush(); //
+    return ContentService.createTextOutput("Success"); //
+  } catch(err) {
+    return ContentService.createTextOutput("Error: " + err.toString()); //
+  }
+}
