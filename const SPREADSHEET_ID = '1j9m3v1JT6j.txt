@@ -1,98 +1,91 @@
-const SPREADSHEET_ID = '1j9m3v1JT6j8Ft8qxJYkv1CH7UBS75lNY36RLzz4XhWc'; //
-const STATUS_SHEET = 'シート1'; // 面会状況用のシート名
-const BBS_SHEET = '掲示板';     // お知らせ用のシート名
-
-function doGet() {
-  // データの取得
-  const statusData = getIcuStatus();
-  const bbsData = getBbsPosts();
-  
-  // GitHubから読み込めるようにJSON形式で返す
-  const output = JSON.stringify({
-    status: statusData,
-    bbs: bbsData
-  });
-  
-  return ContentService.createTextOutput(output).setMimeType(ContentService.MimeType.JSON);
-}
-
-/**
- * ICUのステータスを取得
- */
-function getIcuStatus() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID); //
-  const sheet = ss.getSheetByName(STATUS_SHEET); //
-  const data = sheet.getRange('A2:C2').getValues()[0]; //
-  
-  const rawStatus = data[0];
-  
-  return {
-    // 「OK」または「面会可能」であれば「面会可能」として返す
-    mainStatus: (rawStatus === "OK" || rawStatus === "面会可能") ? "面会可能" : "面会不可", //
-    detail: data[1],
-    updateTime: data[2] ? Utilities.formatDate(new Date(data[2]), "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss") : "---" //
-  };
-}
-
-/**
- * お知らせの内容を取得（最新5件を表示）
- */
-function getBbsPosts() {
-  try {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sheet = ss.getSheetByName(BBS_SHEET); //
-    const lastRow = sheet.getLastRow();
-    if (lastRow < 2) return []; //
-
-    // A2からB列の最後までデータを取得
-    const data = sheet.getRange(2, 1, lastRow - 1, 2).getValues(); //
-
-    // 新しい順に並び替えて整形
-    return data.reverse().map(row => ({
-      time: row[0] ? Utilities.formatDate(new Date(row[0]), "Asia/Tokyo", "MM/dd HH:mm") : "",
-      content: row[1]
-    })).filter(item => item.content !== ""); //
-  } catch(e) {
-    return []; //
-  }
-}
-
-/**
- * スプレッドシート編集時の自動日時更新
- */
-function onEdit(e) {
-  const sheet = e.source.getActiveSheet();
-  const range = e.range;
-  const sheetName = sheet.getName();
-
-  // 面会状況（シート1）の更新
-  if (sheetName === STATUS_SHEET && range.getRow() === 2 && (range.getColumn() === 1 || range.getColumn() === 2)) {
-    sheet.getRange('C2').setValue(new Date()).setNumberFormat('yyyy/MM/dd HH:mm:ss'); //
-  }
-  
-  // 掲示板（お知らせ）の更新
-  if (sheetName === BBS_SHEET && range.getRow() >= 2 && range.getColumn() === 2) {
-    const row = range.getRow();
-    sheet.getRange(row, 1).setValue(new Date()).setNumberFormat('MM/dd HH:mm:ss'); //
-  }
-}
-
-/**
- * ラズパイからの判定結果を受け取ってシートを更新
- */
-function doPost(e) {
-  try {
-    const data = JSON.parse(e.postData.contents); //
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID); //
-    const sheet = ss.getSheetByName(STATUS_SHEET); //
-
-    sheet.getRange("A2").setValue(data.status); //
-    sheet.getRange("B2").setValue(data.detail); //
-    sheet.getRange("C2").setValue(new Date()).setNumberFormat('yyyy/MM/dd HH:mm:ss'); //
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PICU面会状況</title>
+  <style>
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f7f6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
+    .status-box { padding: 20px; border-radius: 10px; margin: 20px 0; }
+    .ok { background-color: #e8f5e9; color: #2e7d32; }
+    .ng { background-color: #ffebee; color: #c62828; }
+    #main-status { font-size: 2.5em; font-weight: bold; margin: 10px 0; }
+    #detail-message { font-size: 1.1em; line-height: 1.6; margin-bottom: 20px; min-height: 3em; }
+    #update-time { font-size: 0.85em; color: #888; }
+    .bbs-container { margin-top: 30px; text-align: left; border-top: 1px solid #eee; padding-top: 20px; }
+    .bbs-item { margin-bottom: 10px; font-size: 0.9em; }
+    .bbs-time { color: #888; margin-right: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>PICU面会状況</h1>
     
-    SpreadsheetApp.flush(); //
-    return ContentService.createTextOutput("Success"); //
-  } catch(err) {
-    return ContentService.createTextOutput("Error: " + err.toString()); //
-  }
-}
+    <div id="status-area" class="status-box">
+      <div id="main-status">読み込み中...</div>
+      <div id="detail-message"></div>
+      <div id="update-time"></div>
+    </div>
+
+    <div class="bbs-container" id="bbs-area">
+      <h3>お知らせ</h3>
+      <div id="bbs-list"></div>
+    </div>
+  </div>
+
+  <script>
+    // あなたのGASのウェブアプリURL
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbwPrxIeBo1lKulI1MSd_ukPOWYnkAErv1fN5g_WAGS8mM1jGbnfFbmVXPL5sv_xKFqVXw/exec";
+
+    async function loadData() {
+      try {
+        // GASへデータを取得しに行く
+        const response = await fetch(GAS_URL);
+        if (!response.ok) throw new Error('ネットワークエラーが発生しました');
+        
+        const data = await response.json();
+        
+        const statusArea = document.getElementById('status-area');
+        const mainStatus = document.getElementById('main-status');
+        const detailMsg = document.getElementById('detail-message');
+        const updateTime = document.getElementById('update-time');
+        
+        // 1. 面会ステータスの反映
+        const s = data.status;
+        detailMsg.innerText = s.detail || "";
+        updateTime.innerText = "最終更新: " + (s.updateTime || "---");
+        
+        // ステータスの判定と色の切り替え [cite: 111, 112]
+        if (s.mainStatus === "OK" || s.mainStatus === "面会可能") {
+            mainStatus.innerText = "面会可能";
+            statusArea.className = "status-box ok";
+        } else {
+            mainStatus.innerText = "面会不可";
+            statusArea.className = "status-box ng";
+        }
+
+        // 2. 掲示板データの反映 [cite: 113, 114]
+        const list = document.getElementById('bbs-list');
+        list.innerHTML = "";
+        if (data.bbs && data.bbs.length > 0) {
+          data.bbs.forEach(function(post) {
+            const div = document.createElement('div');
+            div.className = 'bbs-item';
+            div.innerHTML = '<span class="bbs-time">' + post.time + '</span>' + post.content;
+            list.appendChild(div);
+          });
+        }
+      } catch (error) {
+        console.error('Fetch error:', error);
+        document.getElementById('main-status').innerText = "データ取得エラー";
+      }
+    }
+
+    // 初回読み込みと30秒ごとの自動更新
+    loadData();
+    setInterval(loadData, 30000);
+  </script>
+</body>
+</html>
