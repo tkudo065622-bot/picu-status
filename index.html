@@ -1,22 +1,76 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PICU面会状況</title>
   <style>
-    body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f7f6; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
-    .status-box { padding: 20px; border-radius: 10px; margin: 20px 0; }
-    .ok { background-color: #e8f5e9; color: #2e7d32; }
-    .ng { background-color: #ffebee; color: #c62828; }
-    #main-status { font-size: 2.5em; font-weight: bold; margin: 10px 0; }
-    #detail-message { font-size: 1.1em; line-height: 1.6; margin-bottom: 20px; min-height: 3em; }
-    #update-time { font-size: 0.85em; color: #888; }
-    .bbs-container { margin-top: 30px; text-align: left; border-top: 1px solid #eee; padding-top: 20px; }
-    .bbs-item { margin-bottom: 10px; font-size: 0.9em; }
-    .bbs-time { color: #888; margin-right: 10px; }
+    /* 全体のレイアウト設定 */
+    body { 
+      font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+      margin: 0; 
+      padding: 20px; 
+      background-color: #f4f7f6; 
+      color: #333; 
+    }
+    .container { 
+      max-width: 600px; 
+      margin: 0 auto;
+      background: white; 
+      padding: 30px; 
+      border-radius: 15px; 
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+      text-align: center;
+    }
+
+    /* 面会ステータス表示エリア */
+    .status-box { 
+      padding: 20px; 
+      border-radius: 10px; 
+      margin: 20px 0;
+    }
+    .ok { background-color: #e8f5e9; color: #2e7d32; } /* 面会可能時の色 */
+    .ng { background-color: #ffebee; color: #c62828; } /* 面会不可時の色 */
+
+    #main-status { 
+      font-size: 2.5em; 
+      font-weight: bold; 
+      margin: 10px 0;
+    }
+    #detail-message { 
+      font-size: 1.1em; 
+      line-height: 1.6; 
+      margin-bottom: 20px; 
+      min-height: 3em;
+    }
+    #update-time { 
+      font-size: 0.85em; 
+      color: #888;
+    }
+
+    /* お知らせセクション（センター寄せに修正） */
+    .bbs-container { 
+      margin-top: 30px; 
+      text-align: center; /* 左詰めからセンター寄せに修正 */
+      border-top: 1px solid #eee; 
+      padding-top: 20px; 
+    }
+    .bbs-item { 
+      margin-bottom: 20px; 
+      display: flex; 
+      flex-direction: column; 
+      align-items: center; 
+    }
+    .bbs-time { 
+      color: #888; 
+      font-size: 0.85em;
+      margin-bottom: 4px; /* 時刻と本文の間の隙間 */
+    }
+    .bbs-content {
+      font-size: 0.95em;
+      line-height: 1.5;
+    }
   </style>
 </head>
 <body>
@@ -36,56 +90,11 @@
   </div>
 
   <script>
-    // あなたのGASのウェブアプリURL
+    // GASのウェブアプリURL
     const GAS_URL = "https://script.google.com/macros/s/AKfycbwPrxIeBo1lKulI1MSd_ukPOWYnkAErv1fN5g_WAGS8mM1jGbnfFbmVXPL5sv_xKFqVXw/exec";
 
     async function loadData() {
       try {
         // GASへデータを取得しに行く
         const response = await fetch(GAS_URL);
-        if (!response.ok) throw new Error('ネットワークエラーが発生しました');
-        
-        const data = await response.json();
-        
-        const statusArea = document.getElementById('status-area');
-        const mainStatus = document.getElementById('main-status');
-        const detailMsg = document.getElementById('detail-message');
-        const updateTime = document.getElementById('update-time');
-        
-        // 1. 面会ステータスの反映
-        const s = data.status;
-        detailMsg.innerText = s.detail || "";
-        updateTime.innerText = "最終更新: " + (s.updateTime || "---");
-        
-        // ステータスの判定と色の切り替え [cite: 111, 112]
-        if (s.mainStatus === "OK" || s.mainStatus === "面会可能") {
-            mainStatus.innerText = "面会可能";
-            statusArea.className = "status-box ok";
-        } else {
-            mainStatus.innerText = "面会不可";
-            statusArea.className = "status-box ng";
-        }
-
-        // 2. 掲示板データの反映 [cite: 113, 114]
-        const list = document.getElementById('bbs-list');
-        list.innerHTML = "";
-        if (data.bbs && data.bbs.length > 0) {
-          data.bbs.forEach(function(post) {
-            const div = document.createElement('div');
-            div.className = 'bbs-item';
-            div.innerHTML = '<span class="bbs-time">' + post.time + '</span>' + post.content;
-            list.appendChild(div);
-          });
-        }
-      } catch (error) {
-        console.error('Fetch error:', error);
-        document.getElementById('main-status').innerText = "データ取得エラー";
-      }
-    }
-
-    // 初回読み込みと30秒ごとの自動更新
-    loadData();
-    setInterval(loadData, 30000);
-  </script>
-</body>
-</html>
+        if (!response.ok) throw new
