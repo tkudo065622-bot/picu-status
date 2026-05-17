@@ -1,100 +1,222 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PICU面会状況</title>
+
   <style>
-    /* 全体のレイアウト設定 */
-    body { 
-      font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
-      margin: 0; 
-      padding: 20px; 
-      background-color: #f4f7f6; 
-      color: #333; 
+    body {
+      font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN',
+                   'Hiragino Sans', Meiryo, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f4f7f6;
+      color: #333;
     }
-    .container { 
-      max-width: 600px; 
+
+    .container {
+      max-width: 700px;
       margin: 0 auto;
-      background: white; 
-      padding: 30px; 
-      border-radius: 15px; 
-      box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+      background: #fff;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
       text-align: center;
     }
 
-    /* 面会ステータス表示エリア */
-    .status-box { 
-      padding: 20px; 
-      border-radius: 10px; 
-      margin: 20px 0;
-    }
-    .ok { background-color: #e8f5e9; color: #2e7d32; } /* 面会可能時の色 */
-    .ng { background-color: #ffebee; color: #c62828; } /* 面会不可時の色 */
-
-    #main-status { 
-      font-size: 2.5em; 
-      font-weight: bold; 
-      margin: 10px 0;
-    }
-    #detail-message { 
-      font-size: 1.1em; 
-      line-height: 1.6; 
-      margin-bottom: 20px; 
-      min-height: 3em;
-    }
-    #update-time { 
-      font-size: 0.85em; 
-      color: #888;
+    h1 {
+      margin-bottom: 30px;
     }
 
-    /* お知らせセクション（センター寄せに修正） */
-    .bbs-container { 
-      margin-top: 30px; 
-      text-align: center; /* 左詰めからセンター寄せに修正 */
-      border-top: 1px solid #eee; 
-      padding-top: 20px; 
+    .status-box {
+      padding: 25px;
+      border-radius: 12px;
+      margin-bottom: 30px;
     }
-    .bbs-item { 
-      margin-bottom: 20px; 
-      display: flex; 
-      flex-direction: column; 
-      align-items: center; 
+
+    .ok {
+      background-color: #e8f5e9;
+      color: #2e7d32;
     }
-    .bbs-time { 
-      color: #888; 
+
+    .ng {
+      background-color: #ffebee;
+      color: #c62828;
+    }
+
+    .loading {
+      background-color: #eeeeee;
+      color: #666;
+    }
+
+    #main-status {
+      font-size: 2.5em;
+      font-weight: bold;
+      margin-bottom: 15px;
+    }
+
+    #detail-message {
+      font-size: 1.2em;
+      line-height: 1.6;
+      margin-bottom: 15px;
+    }
+
+    #update-time {
+      font-size: 0.9em;
+      color: #666;
+    }
+
+    .bbs-container {
+      margin-top: 40px;
+      border-top: 1px solid #ddd;
+      padding-top: 20px;
+      text-align: center;
+    }
+
+    .bbs-item {
+      margin-bottom: 20px;
+    }
+
+    .bbs-time {
       font-size: 0.85em;
-      margin-bottom: 4px; /* 時刻と本文の間の隙間 */
+      color: #888;
+      margin-bottom: 5px;
     }
+
     .bbs-content {
-      font-size: 0.95em;
+      font-size: 1em;
       line-height: 1.5;
     }
+
   </style>
 </head>
+
 <body>
+
   <div class="container">
+
     <h1>PICU面会状況</h1>
-    
-    <div id="status-area" class="status-box">
-      <div id="main-status">読み込み中...</div>
+
+    <div id="status-area" class="status-box loading">
+
+      <div id="main-status">
+        読み込み中...
+      </div>
+
       <div id="detail-message"></div>
+
       <div id="update-time"></div>
+
     </div>
 
-    <div class="bbs-container" id="bbs-area">
-      <h3>お知らせ</h3>
+    <div class="bbs-container">
+
+      <h2>お知らせ</h2>
+
       <div id="bbs-list"></div>
+
     </div>
+
   </div>
 
   <script>
-    // GASのウェブアプリURL
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbwPrxIeBo1lKulI1MSd_ukPOWYnkAErv1fN5g_WAGS8mM1jGbnfFbmVXPL5sv_xKFqVXw/exec";
+
+    // GASのWebアプリURL
+    const GAS_URL =
+      "https://script.google.com/macros/s/AKfycbwPrxIeBo1lKulI1MSd_ukPOWYnkAErv1fN5g_WAGS8mM1jGbnfFbmVXPL5sv_xKFqVXw/exec";
 
     async function loadData() {
+
       try {
-        // GASへデータを取得しに行く
+
+        console.log("データ取得開始");
+
         const response = await fetch(GAS_URL);
-        if (!response.ok) throw new
+
+        if (!response.ok) {
+          throw new Error("HTTPエラー: " + response.status);
+        }
+
+        const data = await response.json();
+
+        console.log("取得データ:", data);
+
+        // HTML要素取得
+        const statusArea = document.getElementById("status-area");
+        const mainStatus = document.getElementById("main-status");
+        const detailMessage = document.getElementById("detail-message");
+        const updateTime = document.getElementById("update-time");
+        const bbsList = document.getElementById("bbs-list");
+
+        // 面会状況
+        mainStatus.textContent = data.status.mainStatus || "不明";
+
+        detailMessage.textContent = data.status.detail || "";
+
+        updateTime.textContent =
+          "最終更新: " + (data.status.updateTime || "---");
+
+        // 色変更
+        statusArea.classList.remove("loading", "ok", "ng");
+
+        if (data.status.mainStatus === "面会可能") {
+          statusArea.classList.add("ok");
+        } else {
+          statusArea.classList.add("ng");
+        }
+
+        // お知らせ
+        bbsList.innerHTML = "";
+
+        if (data.bbs && data.bbs.length > 0) {
+
+          data.bbs.forEach(item => {
+
+            const div = document.createElement("div");
+            div.className = "bbs-item";
+
+            div.innerHTML = `
+              <div class="bbs-time">${item.time}</div>
+              <div class="bbs-content">${item.content}</div>
+            `;
+
+            bbsList.appendChild(div);
+
+          });
+
+        } else {
+
+          bbsList.innerHTML = "<p>現在お知らせはありません</p>";
+
+        }
+
+      } catch (error) {
+
+        console.error("エラー:", error);
+
+        const statusArea = document.getElementById("status-area");
+
+        statusArea.classList.remove("loading");
+        statusArea.classList.add("ng");
+
+        document.getElementById("main-status").textContent =
+          "通信エラー";
+
+        document.getElementById("detail-message").textContent =
+          error.toString();
+
+      }
+
+    }
+
+    // 初回読み込み
+    loadData();
+
+    // 30秒ごとに自動更新
+    setInterval(loadData, 30000);
+
+  </script>
+
+</body>
+</html>
